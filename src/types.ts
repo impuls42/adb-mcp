@@ -82,6 +82,48 @@ export const inspectUiInputSchema = {
   asBase64: z.boolean().optional().default(false).describe("Return XML content as base64 (default: false)")
 };
 
+// Fastboot tool schemas
+export const fastbootDevicesInputSchema = {
+  random_string: z.string().optional()
+};
+
+export const fastbootCommandInputSchema = {
+  command: z.string().describe("Fastboot command to execute (e.g. 'getvar all', 'oem unlock')"),
+  device: z.string().optional().describe("Specific device serial number (optional)")
+};
+
+export const fastbootFlashInputSchema = {
+  partition: z.string().describe("Partition to flash (e.g. 'boot', 'recovery', 'system', 'vendor')"),
+  imagePath: z.string().describe("Local path to the image file to flash"),
+  device: z.string().optional().describe("Specific device serial number (optional)")
+};
+
+export const fastbootEraseInputSchema = {
+  partition: z.string().describe("Partition to erase (e.g. 'cache', 'userdata')"),
+  device: z.string().optional().describe("Specific device serial number (optional)")
+};
+
+export const fastbootRebootInputSchema = {
+  target: z.enum(["system", "bootloader", "recovery", "fastboot"]).optional().default("system")
+    .describe("Reboot target: 'system' (default), 'bootloader', 'recovery', or 'fastboot'"),
+  device: z.string().optional().describe("Specific device serial number (optional)")
+};
+
+export const fastbootGetvarInputSchema = {
+  variable: z.string().describe("Variable to query (e.g. 'all', 'product', 'serialno', 'unlocked', 'battery-voltage')"),
+  device: z.string().optional().describe("Specific device serial number (optional)")
+};
+
+export const fastbootOemInputSchema = {
+  oemCommand: z.string().describe("OEM command to execute (e.g. 'unlock', 'lock', 'device-info')"),
+  device: z.string().optional().describe("Specific device serial number (optional)")
+};
+
+export const fastbootBootInputSchema = {
+  imagePath: z.string().describe("Local path to the boot image to boot from (does not flash)"),
+  device: z.string().optional().describe("Specific device serial number (optional)")
+};
+
 // Activity Manager tool schema
 export const adbActivityManagerSchema = z.object({
   amCommand: z.string().describe("Activity Manager subcommand, e.g. 'start', 'broadcast', 'force-stop', etc."),
@@ -110,6 +152,15 @@ export const AdbUidumpSchema = z.object(inspectUiInputSchema);
 export const AdbActivityManagerSchema = adbActivityManagerSchema;
 export const AdbPackageManagerSchema = adbPackageManagerSchema;
 
+export const FastbootDevicesSchema = z.object(fastbootDevicesInputSchema);
+export const FastbootCommandSchema = z.object(fastbootCommandInputSchema);
+export const FastbootFlashSchema = z.object(fastbootFlashInputSchema);
+export const FastbootEraseSchema = z.object(fastbootEraseInputSchema);
+export const FastbootRebootSchema = z.object(fastbootRebootInputSchema);
+export const FastbootGetvarSchema = z.object(fastbootGetvarInputSchema);
+export const FastbootOemSchema = z.object(fastbootOemInputSchema);
+export const FastbootBootSchema = z.object(fastbootBootInputSchema);
+
 // Input type definitions
 export type AdbDevicesInput = z.infer<typeof AdbDevicesSchema>;
 export type AdbShellInput = z.infer<typeof AdbShellSchema>;
@@ -118,6 +169,15 @@ export type AdbLogcatInput = z.infer<typeof AdbLogcatSchema>;
 export type AdbPullInput = z.infer<typeof AdbPullSchema>;
 export type AdbPushInput = z.infer<typeof AdbPushSchema>;
 export type AdbScreenshotInput = z.infer<typeof AdbScreenshotSchema>;
-export type AdbUidumpInput = z.infer<typeof AdbUidumpSchema>; 
+export type AdbUidumpInput = z.infer<typeof AdbUidumpSchema>;
 export type AdbActivityManagerInput = z.infer<typeof AdbActivityManagerSchema>;
 export type AdbPackageManagerInput = z.infer<typeof AdbPackageManagerSchema>;
+
+export type FastbootDevicesInput = z.infer<typeof FastbootDevicesSchema>;
+export type FastbootCommandInput = z.infer<typeof FastbootCommandSchema>;
+export type FastbootFlashInput = z.infer<typeof FastbootFlashSchema>;
+export type FastbootEraseInput = z.infer<typeof FastbootEraseSchema>;
+export type FastbootRebootInput = z.infer<typeof FastbootRebootSchema>;
+export type FastbootGetvarInput = z.infer<typeof FastbootGetvarSchema>;
+export type FastbootOemInput = z.infer<typeof FastbootOemSchema>;
+export type FastbootBootInput = z.infer<typeof FastbootBootSchema>;

@@ -1,15 +1,25 @@
 #!/usr/bin/env node
 
 /**
- * ADB MCP Server
- * --------------
- * 
- * Common tools:
+ * ADB & Fastboot MCP Server
+ * -------------------------
+ *
+ * ADB tools:
  * - adb-devices: List connected devices
  * - inspect-ui: THE MAIN TOOL to check which app is currently on screen
  * - dump-image: Take a screenshot of the current screen
  * - adb-shell: Run shell commands on the device
- * 
+ *
+ * Fastboot tools:
+ * - fastboot_devices: List devices in bootloader/fastboot mode
+ * - fastboot_flash: Flash an image to a partition
+ * - fastboot_boot: Boot from an image without flashing
+ * - fastboot_reboot: Reboot device to system/bootloader/recovery/fastboot
+ * - fastboot_getvar: Query bootloader variables
+ * - fastboot_oem: Run OEM commands
+ * - fastboot_erase: Erase a partition
+ * - fastboot_command: Run arbitrary fastboot commands
+ *
  * Logging:
  * - Default log level is INFO (shows important operations)
  * - For detailed logs, run with: LOG_LEVEL=3 npx adb-mcp
@@ -43,6 +53,14 @@ import {
   AdbUidumpSchema,
   AdbActivityManagerSchema,
   AdbPackageManagerSchema,
+  FastbootDevicesSchema,
+  FastbootCommandSchema,
+  FastbootFlashSchema,
+  FastbootEraseSchema,
+  FastbootRebootSchema,
+  FastbootGetvarSchema,
+  FastbootOemSchema,
+  FastbootBootSchema,
   RequestHandlerExtra
 } from "./types";
 
@@ -65,6 +83,14 @@ async function runAdb(args: string[], options?: ExecFileOptionsWithStringEncodin
     ...(options ?? {})
   };
   return execFilePromise("adb", args, execOptions) as Promise<ExecResult>;
+}
+
+async function runFastboot(args: string[], options?: ExecFileOptionsWithStringEncoding): Promise<ExecResult> {
+  const execOptions: ExecFileOptionsWithStringEncoding = {
+    ...DEFAULT_EXEC_OPTIONS,
+    ...(options ?? {})
+  };
+  return execFilePromise("fastboot", args, execOptions) as Promise<ExecResult>;
 }
 
 // ========== Tool Descriptions ==========
@@ -251,6 +277,42 @@ async function executeAdbCommand(args: string[], errorMessage: string) {
 }
 
 /**
+ * Executes a fastboot command and handles errors consistently.
+ * Note: fastboot outputs most information (including success) to stderr.
+ */
+async function executeFastbootCommand(args: string[], errorMessage: string) {
+  const commandString = ["fastboot", ...args].join(" ");
+  try {
+    log(LogLevel.DEBUG, `Executing command: ${commandString}`);
+    const { stdout, stderr } = await runFastboot(args);
+
+    // Fastboot sends most output to stderr, so combine both
+    const output = (stdout || "") + (stderr || "");
+    const trimmedOutput = output.trim();
+
+    log(LogLevel.DEBUG, `Command successful: ${commandString}`);
+    const commandSummary = args[0] ? `${args[0]}` : commandString;
+    log(LogLevel.INFO, `Fastboot command executed successfully: ${commandSummary}`);
+    return {
+      content: [{
+        type: "text" as const,
+        text: trimmedOutput || "Command executed successfully"
+      }]
+    };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    log(LogLevel.ERROR, `${errorMessage}: ${errorMsg}`);
+    return {
+      content: [{
+        type: "text" as const,
+        text: `${errorMessage}: ${errorMsg}`
+      }],
+      isError: true
+    };
+  }
+}
+
+/**
  * Creates a temporary file path
  * 
  * @param prefix - Prefix for the temp file
@@ -341,8 +403,8 @@ function splitCommandArguments(value: string): string[] {
 
 // Create an MCP server
 const server = new McpServer({
-  name: "ADB MCP Server",
-  version: "0.1.0",
+  name: "ADB & Fastboot MCP Server",
+  version: "0.2.0",
   namespace: "adb"
 });
 
@@ -772,15 +834,229 @@ server.tool(
   }
 );
 
+// ========== Fastboot Tools ==========
+
+// ===== Fastboot Tool Descriptions =====
+
+const FASTBOOT_DEVICES_TOOL_DESCRIPTION =
+  "Lists all Android devices currently in fastboot/bootloader mode. " +
+  "Use this to verify a device is in fastboot mode before running flash or other fastboot commands. " +
+  "Returns a list of device serial numbers with their state.";
+
+const FASTBOOT_COMMAND_TOOL_DESCRIPTION =
+  "Executes an arbitrary fastboot command on a connected device in bootloader mode. " +
+  "Use this for any fastboot operation not covered by the specialized fastboot tools. " +
+  "The command string is split into arguments automatically (supports quoted strings). " +
+  "Example: command='getvar all' or command='set_active a'.";
+
+const FASTBOOT_FLASH_TOOL_DESCRIPTION =
+  "Flashes an image file to a specific partition on a device in bootloader mode. " +
+  "Use this to flash boot images, recovery, system, vendor, or any other partition. " +
+  "Requires the partition name and the local path to the image file. " +
+  "WARNING: Flashing incorrect images can brick the device. Ensure the image matches the device.";
+
+const FASTBOOT_ERASE_TOOL_DESCRIPTION =
+  "Erases a partition on a device in bootloader mode. " +
+  "Common targets include 'cache', 'userdata' (factory reset), or other partitions. " +
+  "WARNING: Erasing partitions like userdata will delete all user data. Use with caution.";
+
+const FASTBOOT_REBOOT_TOOL_DESCRIPTION =
+  "Reboots a device currently in bootloader/fastboot mode. " +
+  "Supports rebooting to: 'system' (normal boot, default), 'bootloader' (stay in bootloader), " +
+  "'recovery' (boot to recovery mode), or 'fastboot' (reboot to fastbootd). " +
+  "Useful for transitioning between device modes during flashing workflows.";
+
+const FASTBOOT_GETVAR_TOOL_DESCRIPTION =
+  "Queries bootloader variables from a device in fastboot mode. " +
+  "Use 'all' to get all available variables, or specify a specific variable name. " +
+  "Common variables: 'product', 'serialno', 'secure', 'unlocked', 'variant', " +
+  "'battery-voltage', 'current-slot', 'slot-count', 'max-download-size'.";
+
+const FASTBOOT_OEM_TOOL_DESCRIPTION =
+  "Executes OEM-specific commands on a device in bootloader mode. " +
+  "Common commands include 'unlock' (unlock bootloader), 'lock' (lock bootloader), " +
+  "'device-info' (show device information), and other vendor-specific commands. " +
+  "WARNING: OEM unlock/lock operations affect device security and may void warranty.";
+
+const FASTBOOT_BOOT_TOOL_DESCRIPTION =
+  "Boots a device from a specified image WITHOUT flashing it to the device. " +
+  "The image is loaded into RAM and booted temporarily. On next reboot, " +
+  "the device will boot from its regular partition. " +
+  "Useful for testing boot images or booting custom recovery without permanent changes.";
+
+// ===== Fastboot Tool Registrations =====
+
+server.tool(
+  "fastboot_devices",
+  FASTBOOT_DEVICES_TOOL_DESCRIPTION,
+  FastbootDevicesSchema.shape,
+  async (_args: Record<string, never>, _extra: RequestHandlerExtra) => {
+    log(LogLevel.INFO, "Listing devices in fastboot mode");
+    return executeFastbootCommand(["devices"], "Error listing fastboot devices");
+  }
+);
+
+server.tool(
+  "fastboot_command",
+  FASTBOOT_COMMAND_TOOL_DESCRIPTION,
+  FastbootCommandSchema.shape,
+  async (args: z.infer<typeof FastbootCommandSchema>, _extra: RequestHandlerExtra) => {
+    log(LogLevel.INFO, `Executing fastboot command: ${args.command}`);
+    const deviceArgs = buildDeviceArgs(args.device);
+    const trimmedCommand = args.command.trim();
+    if (!trimmedCommand) {
+      const message = "Fastboot command must not be empty";
+      log(LogLevel.ERROR, message);
+      return {
+        content: [{ type: "text" as const, text: message }],
+        isError: true
+      };
+    }
+    const commandArgs = splitCommandArguments(trimmedCommand);
+    return executeFastbootCommand([...deviceArgs, ...commandArgs], "Error executing fastboot command");
+  }
+);
+
+server.tool(
+  "fastboot_flash",
+  FASTBOOT_FLASH_TOOL_DESCRIPTION,
+  FastbootFlashSchema.shape,
+  async (args: z.infer<typeof FastbootFlashSchema>, _extra: RequestHandlerExtra) => {
+    log(LogLevel.INFO, `Flashing ${args.partition} with ${args.imagePath}`);
+    const deviceArgs = buildDeviceArgs(args.device);
+    const partition = args.partition.trim();
+    const imagePath = args.imagePath.trim();
+    if (!partition) {
+      return {
+        content: [{ type: "text" as const, text: "Partition name must not be empty" }],
+        isError: true
+      };
+    }
+    if (!imagePath) {
+      return {
+        content: [{ type: "text" as const, text: "Image path must not be empty" }],
+        isError: true
+      };
+    }
+    return executeFastbootCommand(
+      [...deviceArgs, "flash", partition, imagePath],
+      `Error flashing ${partition}`
+    );
+  }
+);
+
+server.tool(
+  "fastboot_erase",
+  FASTBOOT_ERASE_TOOL_DESCRIPTION,
+  FastbootEraseSchema.shape,
+  async (args: z.infer<typeof FastbootEraseSchema>, _extra: RequestHandlerExtra) => {
+    log(LogLevel.INFO, `Erasing partition: ${args.partition}`);
+    const deviceArgs = buildDeviceArgs(args.device);
+    const partition = args.partition.trim();
+    if (!partition) {
+      return {
+        content: [{ type: "text" as const, text: "Partition name must not be empty" }],
+        isError: true
+      };
+    }
+    return executeFastbootCommand(
+      [...deviceArgs, "erase", partition],
+      `Error erasing ${partition}`
+    );
+  }
+);
+
+server.tool(
+  "fastboot_reboot",
+  FASTBOOT_REBOOT_TOOL_DESCRIPTION,
+  FastbootRebootSchema.shape,
+  async (args: z.infer<typeof FastbootRebootSchema>, _extra: RequestHandlerExtra) => {
+    const target = args.target || "system";
+    log(LogLevel.INFO, `Rebooting device to: ${target}`);
+    const deviceArgs = buildDeviceArgs(args.device);
+
+    // fastboot reboot = normal, fastboot reboot bootloader, fastboot reboot recovery, fastboot reboot fastboot
+    const rebootArgs = target === "system"
+      ? [...deviceArgs, "reboot"]
+      : [...deviceArgs, "reboot", target];
+
+    return executeFastbootCommand(rebootArgs, `Error rebooting to ${target}`);
+  }
+);
+
+server.tool(
+  "fastboot_getvar",
+  FASTBOOT_GETVAR_TOOL_DESCRIPTION,
+  FastbootGetvarSchema.shape,
+  async (args: z.infer<typeof FastbootGetvarSchema>, _extra: RequestHandlerExtra) => {
+    log(LogLevel.INFO, `Getting fastboot variable: ${args.variable}`);
+    const deviceArgs = buildDeviceArgs(args.device);
+    const variable = args.variable.trim();
+    if (!variable) {
+      return {
+        content: [{ type: "text" as const, text: "Variable name must not be empty" }],
+        isError: true
+      };
+    }
+    return executeFastbootCommand(
+      [...deviceArgs, "getvar", variable],
+      `Error getting variable ${variable}`
+    );
+  }
+);
+
+server.tool(
+  "fastboot_oem",
+  FASTBOOT_OEM_TOOL_DESCRIPTION,
+  FastbootOemSchema.shape,
+  async (args: z.infer<typeof FastbootOemSchema>, _extra: RequestHandlerExtra) => {
+    log(LogLevel.INFO, `Executing OEM command: ${args.oemCommand}`);
+    const deviceArgs = buildDeviceArgs(args.device);
+    const oemCommand = args.oemCommand.trim();
+    if (!oemCommand) {
+      return {
+        content: [{ type: "text" as const, text: "OEM command must not be empty" }],
+        isError: true
+      };
+    }
+    const oemArgs = splitCommandArguments(oemCommand);
+    return executeFastbootCommand(
+      [...deviceArgs, "oem", ...oemArgs],
+      "Error executing OEM command"
+    );
+  }
+);
+
+server.tool(
+  "fastboot_boot",
+  FASTBOOT_BOOT_TOOL_DESCRIPTION,
+  FastbootBootSchema.shape,
+  async (args: z.infer<typeof FastbootBootSchema>, _extra: RequestHandlerExtra) => {
+    log(LogLevel.INFO, `Booting from image: ${args.imagePath}`);
+    const deviceArgs = buildDeviceArgs(args.device);
+    const imagePath = args.imagePath.trim();
+    if (!imagePath) {
+      return {
+        content: [{ type: "text" as const, text: "Image path must not be empty" }],
+        isError: true
+      };
+    }
+    return executeFastbootCommand(
+      [...deviceArgs, "boot", imagePath],
+      "Error booting from image"
+    );
+  }
+);
+
 // ========== Server Startup ==========
 
 // Start receiving messages on stdin and sending messages on stdout
 async function runServer(): Promise<void> {
   try {
-    log(LogLevel.INFO, "Starting ADB MCP Server...");
+    log(LogLevel.INFO, "Starting ADB & Fastboot MCP Server...");
     log(LogLevel.INFO, `Current log level: ${LogLevel[LOG_LEVEL]}`);
     log(LogLevel.INFO, "To see more detailed logs, set LOG_LEVEL=3 environment variable");
-    
+
     // Check ADB availability
     try {
       const { stdout } = await runAdb(["version"]);
@@ -788,10 +1064,19 @@ async function runServer(): Promise<void> {
     } catch (error) {
       log(LogLevel.WARN, "ADB not found in PATH. Please ensure Android Debug Bridge is installed and in your PATH.");
     }
+
+    // Check fastboot availability
+    try {
+      const { stdout } = await runFastboot(["--version"]);
+      const version = stdout.trim().split('\n')[0] || "unknown version";
+      log(LogLevel.INFO, `Fastboot detected: ${version}`);
+    } catch (error) {
+      log(LogLevel.WARN, "Fastboot not found in PATH. Fastboot tools will not be available.");
+    }
     
     const transport = new StdioServerTransport();
     await server.connect(transport);
-    log(LogLevel.INFO, "ADB MCP Server connected and ready");
+    log(LogLevel.INFO, "ADB & Fastboot MCP Server connected and ready");
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     log(LogLevel.ERROR, "Error connecting server:", errorMsg);
