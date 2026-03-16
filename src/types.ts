@@ -104,8 +104,8 @@ export const fastbootEraseInputSchema = {
 };
 
 export const fastbootRebootInputSchema = {
-  target: z.enum(["system", "bootloader", "recovery", "fastboot"]).optional().default("system")
-    .describe("Reboot target: 'system' (default), 'bootloader', 'recovery', or 'fastboot'"),
+  target: z.enum(["system", "bootloader"]).optional().default("system")
+    .describe("Reboot target: 'system' (default) or 'bootloader'"),
   device: z.string().optional().describe("Specific device serial number (optional)")
 };
 

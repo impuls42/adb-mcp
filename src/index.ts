@@ -464,6 +464,60 @@ server.resource(
   }
 );
 
+// Add fastboot version resource
+server.resource(
+  "fastboot-version",
+  "fastboot://version",
+  async (uri: URL) => {
+    try {
+      const { stdout } = await runFastboot(["--version"]);
+      return {
+        contents: [{
+          uri: uri.href,
+          text: stdout
+        }]
+      };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      log(LogLevel.ERROR, `Error retrieving fastboot version: ${errorMsg}`);
+      return {
+        contents: [{
+          uri: uri.href,
+          text: `Error retrieving fastboot version: ${errorMsg}`
+        }],
+        isError: true
+      };
+    }
+  }
+);
+
+// Add fastboot device list resource
+server.resource(
+  "fastboot-device-list",
+  "fastboot://devices",
+  async (uri: URL) => {
+    try {
+      const { stdout } = await runFastboot(["devices"]);
+      return {
+        contents: [{
+          uri: uri.href,
+          text: stdout || "No devices in fastboot mode"
+        }]
+      };
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      log(LogLevel.ERROR, `Error retrieving fastboot device list: ${errorMsg}`);
+      return {
+        contents: [{
+          uri: uri.href,
+          text: `Error retrieving fastboot device list: ${errorMsg}`
+        }],
+        isError: true
+      };
+    }
+  }
+);
+
 // ========== Tools ==========
 
 // ===== Device Management Tools =====
@@ -862,8 +916,7 @@ const FASTBOOT_ERASE_TOOL_DESCRIPTION =
 
 const FASTBOOT_REBOOT_TOOL_DESCRIPTION =
   "Reboots a device currently in bootloader/fastboot mode. " +
-  "Supports rebooting to: 'system' (normal boot, default), 'bootloader' (stay in bootloader), " +
-  "'recovery' (boot to recovery mode), or 'fastboot' (reboot to fastbootd). " +
+  "Supports rebooting to: 'system' (normal boot, default) or 'bootloader' (stay in bootloader). " +
   "Useful for transitioning between device modes during flashing workflows.";
 
 const FASTBOOT_GETVAR_TOOL_DESCRIPTION =
