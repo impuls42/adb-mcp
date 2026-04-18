@@ -24,15 +24,17 @@
  * - Default log level is INFO (shows important operations)
  * - For detailed logs, run with: LOG_LEVEL=3 npx adb-mcp
  * - Log levels: 0=ERROR, 1=WARN, 2=INFO, 3=DEBUG
+ * - Logs are also written to file at ~/.adb-mcp/adb-mcp.log (override with LOG_FILE env var)
+ * - To disable file logging, set LOG_TO_FILE=0
  */
 
 // Import dependencies using require for better compatibility
 import { z } from "zod";
 import { execFile, ExecFileOptionsWithStringEncoding } from "child_process";
 import { promisify } from "util";
-import { writeFile, unlink, readFile } from "fs";
-import { join, basename } from "path";
-import { tmpdir } from "os";
+import { writeFile, unlink, readFile, appendFile, mkdirSync, existsSync } from "fs";
+import { join, basename, dirname } from "path";
+import { tmpdir, homedir } from "os";
 import { URL } from "url";
 
 // Import MCP SDK using require with type casting to work with our RequestHandlerExtra interface
@@ -82,7 +84,11 @@ async function runAdb(args: string[], options?: ExecFileOptionsWithStringEncodin
     ...DEFAULT_EXEC_OPTIONS,
     ...(options ?? {})
   };
-  return execFilePromise("adb", args, execOptions) as Promise<ExecResult>;
+  log(LogLevel.DEBUG, `[adb] Running: adb ${args.join(" ")}`);
+  const result = await (execFilePromise("adb", args, execOptions) as Promise<ExecResult>);
+  if (result.stdout) log(LogLevel.DEBUG, `[adb] stdout:\n${result.stdout}`);
+  if (result.stderr) log(LogLevel.DEBUG, `[adb] stderr:\n${result.stderr}`);
+  return result;
 }
 
 async function runFastboot(args: string[], options?: ExecFileOptionsWithStringEncoding): Promise<ExecResult> {
@@ -90,7 +96,11 @@ async function runFastboot(args: string[], options?: ExecFileOptionsWithStringEn
     ...DEFAULT_EXEC_OPTIONS,
     ...(options ?? {})
   };
-  return execFilePromise("fastboot", args, execOptions) as Promise<ExecResult>;
+  log(LogLevel.DEBUG, `[fastboot] Running: fastboot ${args.join(" ")}`);
+  const result = await (execFilePromise("fastboot", args, execOptions) as Promise<ExecResult>);
+  if (result.stdout) log(LogLevel.DEBUG, `[fastboot] stdout:\n${result.stdout}`);
+  if (result.stderr) log(LogLevel.DEBUG, `[fastboot] stderr:\n${result.stderr}`);
+  return result;
 }
 
 // ========== Tool Descriptions ==========
@@ -203,11 +213,33 @@ enum LogLevel {
 // Set log level - can be controlled via environment variable
 const LOG_LEVEL = process.env.LOG_LEVEL ? parseInt(process.env.LOG_LEVEL) : LogLevel.INFO;
 
+// File logging configuration
+const LOG_FILE = process.env.LOG_FILE || join(homedir(), '.adb-mcp', 'adb-mcp.log');
+const LOG_TO_FILE = process.env.LOG_TO_FILE !== '0'; // enabled by default, set LOG_TO_FILE=0 to disable
+
+// Ensure log directory exists
+if (LOG_TO_FILE) {
+  const logDir = dirname(LOG_FILE);
+  if (!existsSync(logDir)) {
+    mkdirSync(logDir, { recursive: true });
+  }
+}
+
+const asyncAppendFile = promisify(appendFile);
+
 function log(level: LogLevel, message: string, ...args: any[]): void {
   if (level <= LOG_LEVEL) {
     const prefix = LogLevel[level] || 'UNKNOWN';
+    const timestamp = new Date().toISOString();
+    const extra = args.length > 0 ? ' ' + args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ') : '';
+
     // Send all logs to stderr to avoid interfering with JSON communication on stdout
     console.error(`[${prefix}] ${message}`, ...args);
+
+    // Write to log file asynchronously (fire-and-forget to avoid blocking)
+    if (LOG_TO_FILE) {
+      asyncAppendFile(LOG_FILE, `${timestamp} [${prefix}] ${message}${extra}\n`).catch(() => {});
+    }
   }
 }
 
@@ -223,7 +255,6 @@ function log(level: LogLevel, message: string, ...args: any[]): void {
 async function executeAdbCommand(args: string[], errorMessage: string) {
   const commandString = ["adb", ...args].join(" ");
   try {
-    log(LogLevel.DEBUG, `Executing command: ${commandString}`);
     const { stdout, stderr } = await runAdb(args);
     const stderrText = stderr.trim();
 
@@ -254,7 +285,6 @@ async function executeAdbCommand(args: string[], errorMessage: string) {
       };
     }
 
-    log(LogLevel.DEBUG, `Command successful: ${commandString}`);
     const commandSummary = args[0] ? `${args[0]}` : commandString;
     log(LogLevel.INFO, `ADB command executed successfully: ${commandSummary}`);
     return {
@@ -283,14 +313,12 @@ async function executeAdbCommand(args: string[], errorMessage: string) {
 async function executeFastbootCommand(args: string[], errorMessage: string) {
   const commandString = ["fastboot", ...args].join(" ");
   try {
-    log(LogLevel.DEBUG, `Executing command: ${commandString}`);
     const { stdout, stderr } = await runFastboot(args);
 
     // Fastboot sends most output to stderr, so combine both
     const output = (stdout || "") + (stderr || "");
     const trimmedOutput = output.trim();
 
-    log(LogLevel.DEBUG, `Command successful: ${commandString}`);
     const commandSummary = args[0] ? `${args[0]}` : commandString;
     log(LogLevel.INFO, `Fastboot command executed successfully: ${commandSummary}`);
     return {
