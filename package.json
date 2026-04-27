@@ -21,10 +21,10 @@
     "typescript",
     "mcp server"
   ],
-  "author": "Martin Arellano <llano.mga@gmail.com>",
+  "author": "impuls42",
   "repository": {
     "type": "git",
-    "url": "https://github.com/srmorete/adb-mcp.git"
+    "url": "https://github.com/impuls42/adb-mcp.git"
   },
   "license": "MIT",
   "dependencies": {
