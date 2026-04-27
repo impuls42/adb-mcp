@@ -1,44 +1,47 @@
-# ADB MCP Server
-[![smithery badge](https://smithery.ai/badge/@srmorete/adb-mcp)](https://smithery.ai/server/@srmorete/adb-mcp)
+# ADB & Fastboot MCP Server
 
-An MCP (Model Context Protocol) server for interacting with Android devices through ADB. This TypeScript-based tool provides a bridge between AI models and Android device functionality.
+An actively maintained [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) server that gives AI models direct access to Android devices via **ADB** (Android Debug Bridge) and **Fastboot**. Built in TypeScript, it is a fork of the original [srmorete/adb-mcp](https://github.com/srmorete/adb-mcp) project, extended with full Fastboot support and ongoing maintenance.
 
 ## Features
 
-- 📱 Device Management - List and interact with connected Android devices
-- 📦 App Installation - Deploy APK files to connected devices
-- 📋 Logging - Access device logs through logcat
-- 🔄 File Transfer - Push and pull files between device and host
-- 📸 UI Interaction - Capture screenshots and analyze UI hierarchy
-- 🔧 Shell Command Execution - Run custom commands on the device
+### ADB
+- 📱 **Device Management** – List and interact with connected Android devices
+- 📦 **App Management** – Install APKs, manage packages, control activities
+- 📋 **Logging** – Stream and filter device logs via logcat
+- 🔄 **File Transfer** – Push and pull files between host and device
+- 📸 **UI Interaction** – Capture screenshots and inspect the UI hierarchy
+- 🔧 **Shell Commands** – Execute arbitrary shell commands on a device
+
+### Fastboot
+- 🔌 **Device Discovery** – List devices currently in fastboot/bootloader mode
+- ⚡ **Flash Partitions** – Flash images to specific device partitions
+- 🔁 **Reboot Control** – Reboot to system, bootloader, recovery, or fastboot
+- 🔍 **Variable Query** – Read bootloader variables with `getvar`
+- 🗑️ **Partition Erase** – Erase individual partitions safely
+- 🛠️ **OEM Commands** – Run manufacturer-specific OEM commands
+- 💻 **Arbitrary Commands** – Execute any fastboot command directly
 
 ## Prerequisites
 
-- Node.js (v16 or higher recommended, tested with Node.js v16, v18, and v20)
-- ADB (Android Debug Bridge) installed and in your PATH
+- **Node.js** v16 or higher (tested with v16, v18, and v20)
+- **ADB** installed and available in your `PATH`
+- **Fastboot** installed and available in your `PATH` (required for fastboot tools)
 - An Android device or emulator connected via USB or network with USB debugging enabled
-- Permission to access the device (accepted debugging authorization on device)
+- Debugging authorization accepted on the device
 
 ## Installation
 
-### Installing via Smithery
-
-To install ADB Android Device Server for Claude Desktop automatically via [Smithery](https://smithery.ai/server/@srmorete/adb-mcp):
-
-```bash
-npx -y @smithery/cli install @srmorete/adb-mcp --client claude
-```
-
 ### Manual Installation
+
 ```bash
 # Clone the repository
-git clone https://github.com/srmorete/adb-mcp.git
+git clone https://github.com/impuls42/adb-mcp.git
 cd adb-mcp
 
 # Install dependencies
 npm install
 
-# Build the TypeScript code
+# Build the TypeScript source
 npm run build
 
 # Run the server
@@ -47,125 +50,166 @@ npx adb-mcp
 
 ## Configuration
 
-### ADB Path Configuration
+### Custom ADB / Fastboot Path
 
-The server uses default ADB paths. For custom ADB location:
+By default the server searches for `adb` and `fastboot` in your `PATH`. To override the ADB location:
 
 ```bash
 export ADB_PATH=/path/to/adb
 npx adb-mcp
 ```
 
-### MCP Configuration
+### MCP Client Configuration
 
-Add the ADB MCP server configuration:
-   ```json
-   {
-     "mcpServers": {
-       "adb": {
-         "command": "npx",
-         "args": [
-           "adb-mcp"
-         ]
-       }
-     }
-   }
-   ```
+Add the following to your MCP client configuration (e.g. `mcp.json` for Cursor or Claude Desktop):
+
+```json
+{
+  "mcpServers": {
+    "adb": {
+      "command": "npx",
+      "args": ["adb-mcp"]
+    }
+  }
+}
+```
+
+For a custom ADB binary path, pass it via the environment:
+
+```json
+{
+  "mcpServers": {
+    "adb": {
+      "command": "npx",
+      "args": ["adb-mcp"],
+      "env": {
+        "ADB_PATH": "/path/to/adb"
+      }
+    }
+  }
+}
+```
 
 ## Usage
 
 ### Starting the Server
 
-**IMPORTANT: The server must be running before using any ADB tools.**
-
-Start the server using:
+**The server must be running before any tools can be used.**
 
 ```bash
 npx adb-mcp
 ```
 
-You should see:
+Expected output:
 ```
 [INFO] ADB MCP Server connected and ready
 ```
 
-Keep this terminal window open while using the ADB tools.
+Keep this terminal open while working with ADB/Fastboot tools.
 
 ### Available Tools
 
-All tools are available with the following naming convention:
-
 #### 📱 Device Management
 
-- `adb_devices` - List connected devices
-- `adb_shell` - Execute shell commands on a device
+| Tool | Description |
+|---|---|
+| `adb_devices` | List all connected ADB devices |
+| `adb_shell` | Execute a shell command on a device |
 
 #### 📦 App Management
 
-- `adb_install` - Install an APK file using a local file path
-- `adb_package_manager` - Execute Package Manager (pm) commands - list packages, grant/revoke permissions, manage apps
-- `adb_activity_manager` - Execute Activity Manager (am) commands - start activities, broadcast intents, control app behavior
+| Tool | Description |
+|---|---|
+| `adb_install` | Install an APK from a local file path |
+| `adb_package_manager` | Run Package Manager (`pm`) commands – list packages, grant/revoke permissions, manage apps |
+| `adb_activity_manager` | Run Activity Manager (`am`) commands – start activities, broadcast intents, control app behaviour |
 
 #### 📋 Logging
 
-- `adb_logcat` - View device logs with optional filtering
+| Tool | Description |
+|---|---|
+| `adb_logcat` | Stream device logs with optional tag/level filtering |
 
 #### 🔄 File Transfer
 
-- `adb_pull` - Pull files from a device
-- `adb_push` - Push files to a device
+| Tool | Description |
+|---|---|
+| `adb_pull` | Pull a file from the device to the host |
+| `adb_push` | Push a file from the host to the device |
 
 #### 🔍 UI Interaction
 
-- `dump_image` - Take a screenshot of the current screen
-- `inspect_ui` - Get UI hierarchy in XML format (most useful for AI interaction)
+| Tool | Description |
+|---|---|
+| `dump_image` | Capture a screenshot of the current screen |
+| `inspect_ui` | Retrieve the UI hierarchy as XML (recommended for AI-driven interaction) |
+
+#### ⚡ Fastboot
+
+| Tool | Description |
+|---|---|
+| `fastboot_devices` | List devices in fastboot/bootloader mode |
+| `fastboot_flash` | Flash an image to a partition |
+| `fastboot_boot` | Boot from an image without permanently flashing it |
+| `fastboot_reboot` | Reboot to system, bootloader, recovery, or fastboot |
+| `fastboot_getvar` | Query a bootloader variable |
+| `fastboot_oem` | Run an OEM command |
+| `fastboot_erase` | Erase a partition |
+| `fastboot_command` | Execute an arbitrary fastboot command |
+
+See [ACTIVITY_MANAGER_EXAMPLES.md](ACTIVITY_MANAGER_EXAMPLES.md) and [PACKAGE_MANAGER_EXAMPLES.md](PACKAGE_MANAGER_EXAMPLES.md) for detailed usage examples.
 
 ## Troubleshooting
 
-If tools aren't working:
+### Server
 
-- **Server Issues:**
-  - Ensure the server is running (`npx adb-mcp`)
-  - Check server output for error messages
-  - Try detailed logs: `LOG_LEVEL=3 npx adb-mcp`
-  - Kill hanging processes:
-    - `ps aux | grep "adb-mcp" | grep -v grep`
-    - then `kill -9 [PID]`
+- Ensure the server process is running (`npx adb-mcp`)
+- Check the terminal output for error messages
+- Enable verbose logging: `LOG_LEVEL=3 npx adb-mcp`
+- Kill a hung server process:
+  ```bash
+  ps aux | grep "adb-mcp" | grep -v grep
+  kill -9 <PID>
+  ```
 
-- **Device Connection:**
-  - Verify connection with `adb_devices`
-  - If "unauthorized", accept debugging authorization on device
-  - Check USB/network connections
-  - Try restarting ADB: `adb kill-server && adb start-server`
+### Device Connection
 
-- **ADB Issues:**
-  - Verify ADB installation: `adb version`
+- Verify devices are visible: use `adb_devices`
+- If status is `unauthorized`, accept the debugging prompt on the device screen
+- Check USB cable and port; try a different one if connection is unstable
+- Restart the ADB daemon: `adb kill-server && adb start-server`
 
-- **Device Setup:**
-  - Use an emulator (it was built using one), for real devices maybe try this:
-    - Ensure USB debugging is enabled
-    - For newer Android versions, enable "USB debugging (Security settings)"
-    - Try different USB port or cable
-    - or let me know in an issue
+### ADB / Fastboot Not Found
+
+- Confirm ADB is installed: `adb version`
+- Confirm Fastboot is installed: `fastboot --version`
+- If installed in a non-standard location, set `ADB_PATH` (see [Configuration](#configuration))
+
+### Real Device Tips
+
+- Enable **USB debugging** in Developer Options
+- On Android 11+, also enable **USB debugging (Security settings)** if prompted
+- Fastboot requires the device to be in bootloader mode: hold the correct key combination for your device or run `adb reboot bootloader`
 
 ## Compatibility
 
-- Android 8.0 and higher
-- MCP clients including Claude in Cursor IDE
-- Was built on macOS but **should** run on any POSIX compatible (Linux etc).
-- Did not try on Windows but **maybe** it works.
+- **Android** 8.0 (Oreo) and higher
+- **MCP clients**: Claude Desktop, Cursor IDE, and any standard MCP-compatible client
+- **OS**: macOS and Linux (POSIX-compatible); Windows support is untested
 
 ## Contributing
 
-- Contributions are welcome! Submit a Pull Request.
-- For major changes, open an issue to discuss first.
-- You can, of course, also fork it
-- **Note:** this project was `vibe-coded` so if you spot some weird stuff... well now you know 🙂
+Contributions are welcome! Please open an issue to discuss significant changes before submitting a pull request.
+
+1. Fork the repository: `https://github.com/impuls42/adb-mcp`
+2. Create a feature branch
+3. Submit a pull request against `main`
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License – see the [LICENSE](LICENSE) file for details.
 
 ## Acknowledgments
 
+- Original project by [srmorete](https://github.com/srmorete/adb-mcp)
 - Built with [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction)
